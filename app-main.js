@@ -62,3 +62,131 @@ document.querySelectorAll('.navbtn').forEach(b=>b.addEventListener('click',()=>{
 window.addEventListener('online',updateConnection);window.addEventListener('offline',updateConnection);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 render();
+
+
+
+function filledValue(v){
+  if(Array.isArray(v)) return v.join(', ');
+  return String(v??'').trim();
+}
+function pdfAddLine(doc,text,x,y,maxWidth=175,lineHeight=5){
+  const lines=doc.splitTextToSize(String(text),maxWidth);
+  for(const line of lines){
+    if(y>282){doc.addPage();y=18}
+    doc.text(line,x,y);y+=lineHeight;
+  }
+  return y;
+}
+function pdfAddSection(doc,title,sections,data,y){
+  doc.setFont('helvetica','bold');doc.setFontSize(12);
+  y=pdfAddLine(doc,title,15,y,180,6); y+=1;
+  doc.setFont('helvetica','normal');doc.setFontSize(9);
+  for(const s of sections){
+    const rows=s.fields.map(f=>[f.label,filledValue(data?.[f.key])]).filter(r=>r[1]);
+    if(!rows.length) continue;
+    if(y>270){doc.addPage();y=18}
+    doc.setFont('helvetica','bold');doc.setFontSize(10);
+    y=pdfAddLine(doc,s.title,15,y,180,5.5);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);
+    for(const [label,val] of rows){
+      if(y>278){doc.addPage();y=18}
+      doc.setFont('helvetica','bold');doc.text(label+':',18,y);
+      doc.setFont('helvetica','normal');
+      const labelWidth=Math.min(62,doc.getTextWidth(label+':')+3);
+      y=pdfAddLine(doc,val,18+labelWidth,y,174-labelWidth,4.7)+1;
+    }
+    y+=2;
+  }
+  return y;
+}
+function findPhotoPath(p,ph,index){
+  const num=String(index+1).padStart(3,'0');
+  if(ph.scopeType==='object') return `01_Objekt_Lage_${num}`;
+  if(ph.scopeType==='building'){
+    const b=p.buildings.find(x=>x.id===ph.scopeId);
+    return `02_Gebaeude_${safeName(b?.name||'Unbekannt')}_${num}`;
+  }
+  if(ph.scopeType==='unit'){
+    let bn='Unbekannt',un='Unbekannt';
+    for(const b of p.buildings){
+      const u=b.units.find(x=>x.id===ph.scopeId);
+      if(u){bn=b.name;un=u.name;break}
+    }
+    return `03_Gebaeude_${safeName(bn)}_Einheit_${safeName(un)}_${num}`;
+  }
+  return `99_Sonstiges_${num}`;
+}
+function extForPhoto(ph){
+  const t=(ph.type||ph.blob?.type||'').toLowerCase();
+  if(t.includes('png')) return '.png';
+  if(t.includes('heic')||t.includes('heif')) return '.heic';
+  if(t.includes('webp')) return '.webp';
+  return '.jpg';
+}
+async function buildPdfBlob(photoRows=[]){
+  if(!window.jspdf?.jsPDF) throw new Error('PDF-Modul nicht geladen');
+  const p=project(),doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
+  doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('Ortstermin – Erfassungsbericht',15,18);
+  doc.setFont('helvetica','normal');doc.setFontSize(10);
+  let y=27;
+  y=pdfAddLine(doc,'Auftrag: '+(p.name||''),15,y);
+  if(p.fileNumber)y=pdfAddLine(doc,'Aktenzeichen: '+p.fileNumber,15,y);
+  if(p.client)y=pdfAddLine(doc,'Auftraggeber: '+p.client,15,y);
+  y=pdfAddLine(doc,'Export: '+new Date().toLocaleString('de-DE'),15,y)+4;
+  y=pdfAddSection(doc,'1. Objekt & Lage',p1,p.object,y);
+  p.buildings.forEach((b,i)=>{
+    if(y>250){doc.addPage();y=18}
+    y=pdfAddSection(doc,`2.${i+1} Gebäude: ${b.name}`,p2,b.data,y);
+    b.units.forEach((u,j)=>{
+      if(y>250){doc.addPage();y=18}
+      y=pdfAddSection(doc,`3.${i+1}.${j+1} Nutzungseinheit: ${u.name}`,p3,u.data,y);
+    });
+  });
+  if(photoRows.length){
+    if(y>250){doc.addPage();y=18}
+    doc.setFont('helvetica','bold');doc.setFontSize(12);y=pdfAddLine(doc,'Fotoliste',15,y,180,6)+2;
+    doc.setFont('helvetica','normal');doc.setFontSize(9);
+    for(const r of photoRows){
+      y=pdfAddLine(doc,r.filename+(r.note?' – '+r.note:''),18,y,174,4.7)+1;
+    }
+  }
+  return doc.output('blob');
+}
+async function exportPdfOnly(){
+  const p=project();if(!p)return;
+  try{
+    const photos=await listProjectPhotos(p.id);
+    const counters={};
+    const rows=photos.map(ph=>{
+      const key=ph.scopeType+'|'+ph.scopeId;counters[key]=(counters[key]||0)+1;
+      return{filename:findPhotoPath(p,ph,counters[key]-1)+extForPhoto(ph),note:ph.note||''}
+    });
+    const blob=await buildPdfBlob(rows);
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=safeName(p.name)+'_Ortstermin.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  }catch(e){alert('PDF konnte nicht erstellt werden: '+e.message)}
+}
+async function exportPackage(){
+  const p=project();if(!p)return;
+  if(!window.JSZip){alert('ZIP-Modul ist noch nicht geladen. Bitte die App einmal mit Internet öffnen und neu laden.');return}
+  try{
+    const zip=new JSZip(),photos=await listProjectPhotos(p.id),counters={},rows=[];
+    for(const ph of photos){
+      const key=ph.scopeType+'|'+ph.scopeId;counters[key]=(counters[key]||0)+1;
+      const filename=findPhotoPath(p,ph,counters[key]-1)+extForPhoto(ph);
+      rows.push({filename,note:ph.note||''});
+      zip.folder('Fotos').file(filename,ph.blob);
+    }
+    const pdfBlob=await buildPdfBlob(rows);
+    zip.file(safeName(p.name)+'_Ortstermin.pdf',pdfBlob);
+    if(rows.length){
+      const index='Dateiname;Bildnotiz\n'+rows.map(r=>'"'+r.filename.replace(/"/g,'""')+'";"'+String(r.note||'').replace(/"/g,'""')+'"').join('\n');
+      zip.folder('Fotos').file('Fotoliste.csv','\ufeff'+index);
+    }
+    const out=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(out);a.download=safeName(p.name)+'_Ortstermin.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2500);
+  }catch(e){alert('Exportpaket konnte nicht erstellt werden: '+e.message)}
+}
+async function renderExport(){
+  const m=document.getElementById('main'),p=project();const photoCount=(await listProjectPhotos(p.id)).length;
+  m.innerHTML=`<div class="card hero"><div><h1>Export & Datensicherung</h1><p>Für die Gutachtenerstellung: PDF-Bericht und Fotos mit eindeutigen Dateinamen.</p></div></div>${summaryHtml()}<section class="card section"><h2>Empfohlener Export</h2><div class="actions"><button class="btn primary" onclick="exportPackage()">PDF + Fotos als ZIP</button><button class="btn" onclick="exportPdfOnly()">Nur PDF</button></div><div class="exportbox"><strong>${photoCount} Fotos</strong> werden im ZIP in den Ordner <strong>Fotos</strong> gelegt. Die Dateinamen ergeben sich aus der Ebene, z. B. <code>02_Gebaeude_Hinterhaus_001.jpg</code> oder <code>03_Gebaeude_Vorderhaus_Einheit_EG_links_002.jpg</code>. Zusätzlich liegt eine Fotoliste mit den Bildnotizen bei.</div></section><section class="card section"><h2>Datensicherung & Weiterverarbeitung</h2><div class="actions"><button class="btn" onclick="exportJSON()">Projektdatei inkl. Fotos (.json)</button><button class="btn" onclick="exportCSV()">Tabellendatei (.csv)</button><label class="btn">Projekt importieren<input class="hidden" type="file" accept="application/json,.json" onchange="importJSON(this)"></label></div></section>`;
+}
