@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#1f4b3f" />
+<title>Wertaufnahme – Ortstermin</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><div><div class="title">Wertaufnahme</div><div class="subtitle">Digitaler Erfassungsbogen für den Ortstermin</div></div><div class="status" id="saveStatus">lokal gespeichert</div></header>
+  <div class="layout">
+    <aside class="side">
+      <div class="card">
+        <button class="navbtn active" data-view="object">1 · Objekt & Lage</button>
+        <button class="navbtn" data-view="buildings">2 · Gebäude</button>
+        <button class="navbtn" data-view="units">3 · Nutzungseinheiten</button>
+        <button class="navbtn" data-view="export">Export</button>
+        <div class="tree" id="tree"></div>
+      </div>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+  <div class="footer">Daten bleiben in diesem Browser. Für Datensicherung bitte Projektdatei exportieren.</div>
+</div>
+<script src="data-common.js"></script>
+<script src="data-part1.js"></script>
+<script src="data-part2.js"></script>
+<script src="data-part3.js"></script>
+<script src="app-main.js"></script>
+</body>
+</html>
