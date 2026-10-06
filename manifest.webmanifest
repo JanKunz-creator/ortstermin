@@ -1,6 +1,6 @@
 {
-  "name": "Wertaufnahme Ortstermin",
-  "short_name": "Wertaufnahme",
+  "name": "Ortstermin",
+  "short_name": "Ortstermin",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f4f6f5",
