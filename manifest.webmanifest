@@ -1,0 +1,9 @@
+{
+  "name": "Wertaufnahme Ortstermin",
+  "short_name": "Wertaufnahme",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f6f5",
+  "theme_color": "#1f4b3f",
+  "lang": "de"
+}
